@@ -1,0 +1,449 @@
+<!doctype HTML>
+<html>
+    <head>
+        <title>Простейший измеритель скорости AJAX-POST/GET-запросов</title>
+        <meta charset="utf-8" />
+		<script src="http://code.jquery.com/jquery.js"></script>
+        <style>
+            .gq-asm-out {
+             font-family: monospace;
+             border-spacing: 0;
+             font-size: 12px;
+             width: 100%;
+             margin: 5px 0 40px 0;
+             border-top-width: 2px;
+             border-top-style: solid;
+           }
+           .gq-asm-out th sub {
+             font-size: 8px;
+             font-weight: 500;
+           }
+           .gq-asm-out th.num {
+             min-width: 13px;
+           }
+           .gq-asm-out td,
+           .gq-asm-out th {
+             padding: 3px 4px;
+             text-align: center;
+             vertical-align: middle;
+           }
+           .gq-asm-out th.br,
+           .gq-asm-out td:first-child,
+           .gq-asm-out td:nth-child(2),
+           .gq-asm-out td:nth-child(3),
+           .gq-asm-out td:nth-child(4n + 4) {
+             border-right-width: 1px;
+             border-right-style: solid;
+           }
+           .gq-asm-out .nolrpads {
+             padding-left: 0;
+             padding-right: 0;
+           }
+           .gq-asm-out td:last-child {
+             border-right-style: none !important;
+           }
+           .gq-asm-iface {
+             position: relative;
+             margin-top: 20px;
+             margin-bottom: 20px;
+           }
+           .gq-asm-iface td {
+             vertical-align: middle;
+             padding-bottom: 5px;
+           }
+           .gq-asm-iface td.label {
+             text-align: right;
+             padding-right: 5px;
+             white-space: nowrap;
+           }
+           .gq-asm-iface td.hint {
+             color: #aaa;
+             font-size: 12px;
+             line-height: 14px;
+             text-align: left;
+             padding-left: 10px;
+             padding-right: 60px;
+           }
+           .gq-asm-iface .gq-service-select-single {
+             width: 84px;
+           }
+           .gq-asm-iface .input-int {
+             width: 80px;
+           }
+           .gq-asm-iface .ctrls td {
+             padding-top: 10px;
+             vertical-align: middle;
+           }
+           .gq-asm-iface .submit-w {
+             margin: 10px 0;
+             text-align: center;
+           }
+           .gq-asm-iface .controls-w {
+             overflow: hidden;
+             margin-top: 10px;
+           }
+           .gq-asm-ind {
+             float: right;
+             margin-right: 30px;
+             margin-top: 13px;
+           }
+           .gq-asm-ind .n,
+           .gq-asm-ind .all {
+             font-weight: 700;
+           }
+           .gq-asm-clear-table {
+             float: right;
+             font-weight: 700;
+             padding: 0px 5px;
+             color: #777 !important;
+             cursor: pointer;
+           }
+           
+        </style>
+        <script>
+            jQuery(function ($) {
+           
+               var N = 10,
+                   Nmax = 1000,
+                   timeout = 0,
+                   b_eval_going = 0,
+                   b_force_stop = 0,
+                   to = null, to_fn,
+                   H = '#gq-asm-',
+                   $ind_all = $(H + 'ind .all'),
+                   $ind_n = $(H + 'ind .n'),
+                   $n_quers = $(H + 'n-queries'),
+                   $time_gap = $(H + 'time-gap'),
+                   $btn_abort = $(H + 'btn-abort'),
+                   $process_info = $(H + 'process-info'),
+                   $results_w = $('#results-w'),
+                   $output = $(H + 'out'),
+                   $send_data_cb = $(H + 'send-data'),
+                   $cache_val_sel = $(H + 'cache-val-sel');
+           
+               function my_setTimeout (fn, time) {
+                   to = setTimeout(to_fn = fn, time);
+               }
+           
+               function get_cache_val () {
+                   var v = $cache_val_sel.val();
+                   return v == 'true' ? true : (v == 'false' ? false : void 0);
+               }
+           
+               function do_ajax (b_get, b_send_data, cache, fn) {
+           
+                   $.ajax({
+                       method: b_get ? 'GET' : 'POST',
+                       data: b_send_data ? {
+                           arg: "PING"
+                       } : void 0,
+                       cache: cache,
+                       url: '',
+                       success: function (data, textStatus, jqXHR) {
+                           if (jqXHR.status == 200) {
+                               fn(b_get ? 'get' : 'post');
+                               return;
+                           }
+                           if (typeof console != 'undefined') {
+                               console.log('error (status != 200 OK), jqXHR: ', jqXHR);
+                           } else {
+                               var x = [], k;
+                               for (k in jqXHR) if (jqXHR.hasOwnProperty(k)) {
+                                   x.push(k);
+                               }
+                               alert('ERROR: ' + x.join(', ') + '\n' + jqXHR.status);
+                           }
+                       },
+                       error: function (jqXHR) {
+                           if (typeof console != 'undefined') {
+                               console.log('error: ', jqXHR);
+                           } else {
+                               alert('ERROR');
+                           }
+                       }
+                   });
+           
+               }
+           
+               function analyze_vals ($arr, a_vals) {
+                   var avg = 0,
+                       min, max,
+                       S2 = 0, S, x,
+                       i, l = a_vals.length;
+           
+                   for (i = 0; i < l;) {
+                       x = a_vals[i++];
+                       avg += x;
+                       if (min === void 0 || min > x) {
+                           min = x;
+                       }
+                       if (max === void 0 || max < x) {
+                           max = x;
+                       }
+                   }
+                   avg /= l;
+           
+                   for (i = 0; i < l; i++) {
+                       x = a_vals[i] - avg;
+                       S2 += x*x;
+                   }
+                   S2 /= l;
+           
+                   avg = Math.round(100*avg)/100;
+                   S = Math.round(100*Math.sqrt(S2))/100;
+           
+                   $arr.push(min, max, avg, S);
+               }
+           
+               function get_good_val ($this, val, min, max) {
+                   var v = $this.val();
+                   if (v === '' || isNaN(+v)) {
+                       $this.val(val);
+                       return val;
+                   }
+                   v = +v;
+                   if (min !== void 0 && v < min) {
+                       $this.val(min);
+                       v = min;
+                   }
+                   if (max !== void 0 && v > max) {
+                       $this.val(max);
+                       v = max;
+                   }
+                   return v;
+               }
+           
+               $n_quers
+                   .change(function () {
+                       N = get_good_val($(this), N, 1, Nmax);
+                   })
+                   .change()
+                   ;
+           
+               $time_gap
+                   .change(function () {
+                       timeout = get_good_val($(this), timeout, 0, 3600000);
+                   })
+                   .change()
+                   ;
+           
+               $btn_abort.click(function () {
+                   b_force_stop = 1;
+                   if (to) {
+                       clearTimeout(to);
+                       to = null;
+                       to_fn();
+                   }
+                   $process_info.hide();
+               });
+           
+               $(H + 'the-button').click(function () {
+           
+                   if (b_eval_going) {
+                       return;
+                   }
+           
+                   b_eval_going = 1;
+                   b_force_stop = 0;
+                   $process_info.show();
+           
+                   var _N = N,
+                       n = _N,
+                       _timeout = timeout,
+                       _cache = get_cache_val(),
+                       _b_send_data = $send_data_cb.prop('checked'),
+           
+                       send_time,
+                       flag,
+                       vals = {
+                           get: [],
+                           post: []
+                       };
+           
+                   $ind_all.text(n);
+                   $ind_n.text('0');
+           
+                   function do_ajaxes (b_first_get, fn) {
+                       var d = new Date();
+                       send_time = d.valueOf();
+                       do_ajax(b_first_get ? 0 : 1, _b_send_data, _cache, fn);
+                       do_ajax(b_first_get ? 1 : 0, _b_send_data, _cache, fn);
+                   }
+           
+                   function do_ajaxes_with_timeout (_timeout, b_first_get, fn) {
+           
+                       if (n && _timeout) {
+                           my_setTimeout(function () {
+                               do_ajaxes(b_first_get, fn);
+                           }, _timeout);
+                           return;
+                       }
+           
+                       do_ajaxes(b_first_get, fn);
+           
+                   }
+           
+                   function fn (type) {
+                       var delta, i, j, l, d, result,
+                           $window = $(window);
+           
+                       if (send_time !== void 0) {
+                           d = new Date();
+                           delta = d.valueOf() - send_time;
+                           vals[type].push(delta);
+                           // console.log('' + n + ': delta(' + type + '): ' + delta);
+                       }
+           
+                       if (flag) {
+                           flag = 0;
+                           return;
+                       }
+           
+                       if (n && !b_force_stop) {
+                           n--;
+                           $ind_n.text(_N - n);
+           
+                           i = Math.random() >= 0.5;
+                           do_ajaxes_with_timeout(_timeout, i, fn);
+           
+                           flag = 1;
+                       } else {
+                           if (!b_eval_going) {
+                               return;
+                           }
+                           send_time = void 0;
+           
+                           vals.diff = [];
+                           i = vals.get.length;
+                           j = vals.post.length;
+           
+                           l = i > j ? j : i;
+                           if (i != j) {
+                               vals.get.splice(l);
+                               vals.post.splice(l);
+                           }
+           
+                           for (i = 0; i < l; i++) {
+                               vals.diff.push(vals.post[i] - vals.get[i]);
+                           }
+           
+                           result = [l, _timeout, _b_send_data ? '*' : '', _cache ? 'T' : (_cache === false ? 'F' : '-')];
+           
+                           analyze_vals(result, vals.get);
+                           analyze_vals(result, vals.post);
+                           analyze_vals(result, vals.diff);
+           
+                           $output.find('tbody').append($('<tr><td> ' + result.join(' </td><td> ') + ' </td></tr>'));
+           
+                           $process_info.hide();
+                           $results_w.show();
+           
+                           i = $window.height();
+                           l = $output.offset().top + $output.outerHeight() + 50;  // 50 - некоторый типа отступ. с балды.
+                           if ($window.scrollTop() + i < l) {
+                               $('html, body').animate({
+                                   scrollTop: l - i
+                               }, {
+                                   duration: 300
+                               });
+                           }
+           
+                           b_eval_going = 0;
+                       }
+           
+                   }
+           
+                   fn();
+           
+               });
+           
+               $(H + 'clear-table').click(function () {
+                   $output.find('tr').not('.h').remove();
+                   $results_w.hide();
+               });
+           
+           });
+           
+           
+           
+        </script>
+    </head>
+    <body>
+        <table id="gq-asm-iface" class="gq-asm-iface">
+         <tr>
+           <td class="label">
+             <label for="gq-asm-n-queries">Сделать запросов:</label>
+           </td>
+           <td>
+             <input id="gq-asm-n-queries" type="text" pattern="\d+" class="gq-service-input input-int"/>
+           </td>
+           <td class="hint">Количество замеров времени выполнения запросов.</td>
+         </tr>
+         <tr>
+           <td class="label">
+             <label for="gq-asm-time-gap">Пауза Δt между запросами, ms:</label>
+           </td>
+           <td>
+             <input id="gq-asm-time-gap" type="text" pattern="\d+" value="0" class="gq-service-input input-int"/>
+           </td>
+           <td class="hint">Интервал времени между получением предыдущего запроса и отправкой следующего.</td>
+         </tr>
+         <tr>
+           <td class="label">
+             <label for="gq-asm-send-data">Отправлять данные:</label>
+           </td>
+           <td>
+             <input id="gq-asm-send-data" type="checkbox" checked="checked" class="gq-service-checkbox"/>
+           </td>
+           <td class="hint">POST-запросы без данных не имеют тела, поэтому аналогичны GET-запросам.</td>
+         </tr>
+         <tr>
+           <td class="label">
+             <label for="gq-asm-cache-val-sel">Аргумент cache вызова $.ajax():</label>
+           </td>
+           <td>
+             <select id="gq-asm-cache-val-sel" class="gq-service-select-single">
+               <option value="default" selected="selected">default</option>
+               <option value="true">true</option>
+               <option value="false">false</option>
+             </select>
+           </td>
+           <td class="hint">В IE GET-запросы агрессивно кешируются.</td>
+         </tr>
+         <tr class="ctrls">
+           <td><input type="button" id="gq-asm-the-button" value="Измерить" /></td>
+           <td colspan="2">
+             <div id="gq-asm-process-info" style="display: none;"><input type="button" id="gq-asm-btn-abort" value="Отменить" /><div id="gq-asm-ind" class="gq-asm-ind">Запросов сделано: <span class="n">0</span>/<span class="all">0</span></div>
+             </div>
+           </td>
+         </tr>
+       </table>
+       <div id="results-w" style="display: none;" class="results-w">
+         <label for="gq-asm-out">Результаты, ms:</label><a id="gq-asm-clear-table" href="javascript:void(0)" class="gq-asm-clear-table gq-service-jslnk">очистить</a>
+         <table id="gq-asm-out" class="gq-asm-out gq-service-table">
+           <tr class="h top">      <th rowspan="2" title="количество сделанных запросов" class="br num">N</th>
+             <th rowspan="2" title="интервал времени между запросами" class="br">Δt</th>
+             <th rowspan="2" class="br nolrpads">дан-<br/>ные</th>
+             <th rowspan="2" class="br nolrpads">ca-<br/>che</th>
+             <th colspan="4" title="запросы типа GET" class="br">GET</th>
+             <th colspan="4" title="запросы типа POST" class="br">POST</th>
+             <th colspan="4" title="разница между временами выполнения запросов POST и GET">POST - GET</th>
+           </tr>
+           <tr class="h bot">
+             <th>T<sub>min</sub></th>
+             <th>T<sub>max</sub></th>
+             <th>&lt;T&gt;</th>
+             <th class="br">σT</th>
+             <th>T<sub>min</sub></th>
+             <th>T<sub>max</sub></th>
+             <th>&lt;T&gt;</th>
+             <th class="br">σT</th>
+             <th>T<sub>min</sub></th>
+             <th>T<sub>max</sub></th>
+             <th>&lt;T&gt;</th>
+             <th>σT</th>
+           </tr>
+         </table>
+       </div>
+    </body>
+</html>
